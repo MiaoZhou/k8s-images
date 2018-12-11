@@ -11,6 +11,8 @@ import os
 # ######################### config there variables ############################
 # #############################################################################
 
+docker_hub_namespace = 'itfarmk8s'
+
 #  your username at hub.docker.com
 docker_hub_username = os.environ.get('DOCKER_HUB_USERNAME')
 # your password
@@ -46,7 +48,8 @@ def login(username, password):
 
 
 def create_autobuild(token, namespace, repository, vcs_repo_name, provider='github', description='', is_private=False, build_tags=[]):
-    create_autobuild_url = _base_url + '/repositories/' + namespace + '/' + repository + '/autobuild/'
+    create_autobuild_url = _base_url + '/repositories/' + \
+        namespace + '/' + repository + '/autobuild/'
 
     data = {
         'dockerhub_repo_name': namespace + '/' + repository,
@@ -60,12 +63,14 @@ def create_autobuild(token, namespace, repository, vcs_repo_name, provider='gith
         'Content-Type': 'application/json',
         'Authorization': 'JWT ' + token,
     }
-    res = post_request(create_autobuild_url, data=json_stringify(data), headers=headers)
+    res = post_request(create_autobuild_url,
+                       data=json_stringify(data), headers=headers)
     return json_parse(res.read())
 
 
 def fetch_autobuild(token, namespace, repository):
-    fetch_autobuild_url = _base_url + '/repositories/' + namespace + '/' + repository + '/autobuild/'
+    fetch_autobuild_url = _base_url + '/repositories/' + \
+        namespace + '/' + repository + '/autobuild/'
     headers = {
         'Authorization': 'JWT ' + token,
     }
@@ -74,7 +79,8 @@ def fetch_autobuild(token, namespace, repository):
 
 
 def create_autobuild_tag(token, namespace, repository, image_tag, dockerfile_location, source_type='Branch', source_name='master'):
-    create_autobuild_tag_url = _base_url + '/repositories/' + namespace + '/' + repository + '/autobuild/tags/'
+    create_autobuild_tag_url = _base_url + '/repositories/' + \
+        namespace + '/' + repository + '/autobuild/tags/'
     headers = {
         'Content-Type': 'application/json',
         'Authorization': 'JWT ' + token,
@@ -87,12 +93,14 @@ def create_autobuild_tag(token, namespace, repository, image_tag, dockerfile_loc
         'source_type': source_type,
         'source_name': source_name,
     }
-    res = post_request(create_autobuild_tag_url, data=json_stringify(data), headers=headers)
+    res = post_request(create_autobuild_tag_url,
+                       data=json_stringify(data), headers=headers)
     return json_parse(res.read())
 
 
 def update_autobuild_tag(token, namespace, repository, autobuild_tag_id, image_tag, dockerfile_location, source_type='Branch', source_name='master'):
-    update_autobuild_tag_url = _base_url + '/repositories/' + namespace + '/' + repository + '/autobuild/tags/' + str(autobuild_tag_id)
+    update_autobuild_tag_url = _base_url + '/repositories/' + namespace + \
+        '/' + repository + '/autobuild/tags/' + str(autobuild_tag_id)
     headers = {
         'Content-Type': 'application/json',
         'Authorization': 'JWT ' + token,
@@ -105,13 +113,15 @@ def update_autobuild_tag(token, namespace, repository, autobuild_tag_id, image_t
         'source_type': source_type,
         'source_name': source_name,
     }
-    res = put_request(update_autobuild_tag_url, data=json_stringify(data), headers=headers)
+    res = put_request(update_autobuild_tag_url,
+                      data=json_stringify(data), headers=headers)
 
     return json_parse(res.read())
 
 
 def delete_autobuild_tag(token, namespace, repository, autobuild_tag_id):
-    delete_autobuild_tag_url = _base_url + '/repositories/' + namespace + '/' + repository + '/autobuild/tags/' + str(autobuild_tag_id) + '/'
+    delete_autobuild_tag_url = _base_url + '/repositories/' + namespace + \
+        '/' + repository + '/autobuild/tags/' + str(autobuild_tag_id) + '/'
     headers = {
         'Authorization': 'JWT ' + token,
     }
@@ -143,9 +153,21 @@ def to_kebab_case(str):
     return str.replace('/', '.')
 
 
+def gen_image_name(str):
+    [domain, namespace, repository] = image_url.split('/')
+
+    if domain == 'gcr.io' and (namespace == 'google_containers' or namespace == 'google-containers'):
+        return repository
+    elif domain == 'k8s.gcr.io':
+        return namespace
+    else:
+        return to_kebab_case(str)
+
+
 if __name__ == '__main__':
     try:
-        login_res = login(username=docker_hub_username, password=docker_hub_password)
+        login_res = login(username=docker_hub_username,
+                          password=docker_hub_password)
         token = login_res.get('token')
     except error.HTTPError as e:
         print(e.reason)
@@ -154,28 +176,27 @@ if __name__ == '__main__':
 
     cwd = os.getcwd()
 
-    for image_url in images.IMAGES:
+    for image_url, tags in images.IMAGES.items():
         print('image: ' + image_url)
 
         dir_name = to_kebab_case(image_url)
+        image_name = gen_image_name(image_url)
         image_repo_path = os.path.join(cwd, dir_name)
-
-        tags = [filename for filename in os.listdir(image_repo_path) if os.path.isdir(os.path.join(image_repo_path, filename))]
 
         # make sure autobuild exists
         try:
             autobuild = fetch_autobuild(
                 token,
-                namespace=docker_hub_username,
-                repository=dir_name,
+                namespace=docker_hub_namespace,
+                repository=image_name,
             )
         except error.HTTPError as e:
             # if autobuild does not exists, then create it
             if (e.getcode() == 404):
                 autobuild = create_autobuild(
                     token,
-                    namespace=docker_hub_username,
-                    repository=dir_name,
+                    namespace=docker_hub_namespace,
+                    repository=image_name,
                     provider=docker_file_provider,
                     vcs_repo_name=docker_file_provider_repo_name,
                     description='mirror of ' + image_url,
@@ -190,8 +211,8 @@ if __name__ == '__main__':
         for exists_build_tag in exists_build_tags:
             delete_autobuild_tag(
                 token,
-                namespace=docker_hub_username,
-                repository=dir_name,
+                namespace=docker_hub_namespace,
+                repository=image_name,
                 autobuild_tag_id=exists_build_tag.get('id'),
             )
 
@@ -201,8 +222,8 @@ if __name__ == '__main__':
 
             create_autobuild_tag(
                 token=token,
-                namespace=docker_hub_username,
-                repository=dir_name,
+                namespace=docker_hub_namespace,
+                repository=image_name,
                 image_tag=tag,
                 dockerfile_location=docker_file_location
             )

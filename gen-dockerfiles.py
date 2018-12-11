@@ -27,18 +27,8 @@ def get_tag_url(image_url):
 def to_kebab_case(str):
     return str.replace('/', '.')
 
-
-for image_url in images.IMAGES:
+for image_url, tags in images.IMAGES.items():
     print('dealing with ' + image_url)
-
-    req = request.Request(get_tag_url(image_url))
-    raw_json = request.urlopen(req).read()
-    parsed_json = json.loads(raw_json)
-
-    try:
-        tags = parsed_json['tags']
-    except KeyError:
-        tags = parsed_json.keys()
 
     image_name = image_url.split('/')[-1]
 
